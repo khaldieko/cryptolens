@@ -1,0 +1,7 @@
+PORT=4000
+DATABASE_URL=postgres://cryptolens:cryptolens@localhost:5432/cryptolens
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=change-me-in-production
+COINGECKO_BASE=https://api.coingecko.com/api/v3
+ETHERSCAN_API_KEY=your-free-etherscan-key
+RISK_ENGINE_URL=http://localhost:8000
