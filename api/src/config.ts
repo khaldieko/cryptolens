@@ -9,4 +9,5 @@ export const config = {
   coingeckoBase: process.env.COINGECKO_BASE ?? "https://api.coingecko.com/api/v3",
   etherscanApiKey: process.env.ETHERSCAN_API_KEY ?? "",
   riskEngineUrl: process.env.RISK_ENGINE_URL ?? "http://localhost:8000",
+  coingeckoApiKey: process.env.COINGECKO_API_KEY ?? "CG-ptKTK28dX1t4Jx1m1ceBqGyX",
 };

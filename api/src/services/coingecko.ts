@@ -14,7 +14,10 @@ export interface PriceMap {
 
 async function cgFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${config.coingeckoBase}${path}`, {
-    headers: { accept: "application/json" },
+    headers: {
+      accept: "application/json",
+      ...(config.coingeckoApiKey ? { "x-cg-demo-api-key": config.coingeckoApiKey } : {}),
+    },
   });
   if (res.status === 429) {
     throw Object.assign(new Error("CoinGecko rate limit hit — serving cached data only"), { status: 429 });
