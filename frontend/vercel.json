@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://cryptolens-api-a4ff.onrender.com/api/:path*"
+    }
+  ]
+}
