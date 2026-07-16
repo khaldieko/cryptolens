@@ -29,6 +29,7 @@ async function cgFetch<T>(path: string): Promise<T> {
 }
 
 export async function getPrices(ids: string[], vs = "usd"): Promise<PriceMap> {
+  if (ids.length === 0) return {};
   const sorted = [...ids].sort().join(",");
   const key = `cg:prices:${sorted}:${vs}`;
   return cached(key, 60, () =>

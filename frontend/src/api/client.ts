@@ -31,3 +31,45 @@ export const login = (email: string, password: string) =>
 
 export const register = (email: string, password: string) =>
   api<{ token: string }>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) });
+
+// ---- Week 3: portfolio ----
+
+export interface ValuedHolding {
+  assetId: string;
+  symbol: string;
+  amount: number;
+  priceUsd: number;
+  valueUsd: number;
+  change24h: number;
+  pctOfPortfolio: number;
+  sourceId: number;
+  sourceLabel: string;
+  sourceKind: string;
+}
+
+export interface PortfolioView {
+  portfolioId: number;
+  totalValueUsd: number;
+  sources: Array<{ id: number; kind: string; label: string }>;
+  holdings: ValuedHolding[];
+}
+
+export const getPortfolio = () => api<PortfolioView>("/portfolio");
+
+export const addWallet = (address: string) =>
+  api<{ sourceId: number; address: string; eth: number }>("/portfolio/wallets", {
+    method: "POST",
+    body: JSON.stringify({ address }),
+  });
+
+export const importCsv = (filename: string, csv: string) =>
+  api<{ sourceId: number; imported: number; skipped: string[] }>("/portfolio/csv", {
+    method: "POST",
+    body: JSON.stringify({ filename, csv }),
+  });
+
+export const syncWallets = () =>
+  api<{ refreshed: number; total: number }>("/portfolio/sync", { method: "POST" });
+
+export const removeSource = (id: number) =>
+  api<{ deleted: number }>(`/portfolio/sources/${id}`, { method: "DELETE" });
