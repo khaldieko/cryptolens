@@ -7,6 +7,12 @@ import Layout from "../components/Layout";
 const fmtUsd = (n: number) =>
   n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
+/** Compact display for large totals so the summary card never overflows. */
+const fmtUsdCompact = (n: number) =>
+  Math.abs(n) >= 1000
+    ? n.toLocaleString(undefined, { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 2 })
+    : fmtUsd(n);
+
 const shorten = (label: string) =>
   label.startsWith("0x") && label.length > 12 ? `${label.slice(0, 6)}...${label.slice(-4)}` : label;
 
@@ -111,9 +117,14 @@ export default function Portfolio() {
       {view && (
         <>
           <div className="flex flex-wrap gap-4 mb-6">
-            <div className="rounded-xl bg-slate-50 border border-slate-200 px-5 py-4">
+            <div className="rounded-xl bg-slate-50 border border-slate-200 px-5 py-4 max-w-xs overflow-hidden">
               <p className="text-xs text-slate-500">Portfolio Total</p>
-              <p className="text-2xl font-bold text-slate-800">{fmtUsd(view.totalValueUsd)}</p>
+              <p className="text-2xl font-bold text-slate-800 truncate" title={fmtUsd(view.totalValueUsd)}>
+                {fmtUsdCompact(view.totalValueUsd)}
+              </p>
+              {view.totalValueUsd >= 1000 && (
+                <p className="text-xs text-slate-400 truncate">{fmtUsd(view.totalValueUsd)}</p>
+              )}
             </div>
             <div className="rounded-xl bg-slate-50 border border-slate-200 px-5 py-4 flex-1 min-w-64">
               <p className="text-xs text-slate-500 mb-2">Connected Sources</p>
@@ -160,9 +171,9 @@ export default function Portfolio() {
                 <tr key={`${h.sourceId}-${h.assetId}-${i}`} className="border-t border-slate-100">
                   <td className="py-2 font-medium">{h.symbol}</td>
                   <td className="py-2 text-slate-500">{shorten(h.sourceLabel)}</td>
-                  <td className="py-2 text-right">{h.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>
+                  <td className="py-2 text-right whitespace-nowrap" title={String(h.amount)}>{h.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                   <td className="py-2 text-right">{fmtUsd(h.priceUsd)}</td>
-                  <td className="py-2 text-right font-medium">{fmtUsd(h.valueUsd)}</td>
+                  <td className="py-2 text-right font-medium whitespace-nowrap" title={fmtUsd(h.valueUsd)}>{fmtUsdCompact(h.valueUsd)}</td>
                   <td className="py-2 text-right">{h.pctOfPortfolio.toFixed(1)}%</td>
                 </tr>
               ))}

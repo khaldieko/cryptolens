@@ -73,3 +73,17 @@ export const syncWallets = () =>
 
 export const removeSource = (id: number) =>
   api<{ deleted: number }>(`/portfolio/sources/${id}`, { method: "DELETE" });
+
+// ---- Week 4: risk metrics ----
+
+export interface RiskMetrics {
+  totalValueUsd: number;
+  change24hPct: number;
+  volatilityAnnualized: number;
+  concentrationHhi: number;
+  concentrationRating: "Low" | "Moderate" | "High";
+  assetsIncluded: number;
+  computedAt: string;
+}
+
+export const getRiskMetrics = () => api<RiskMetrics>("/risk/metrics");
