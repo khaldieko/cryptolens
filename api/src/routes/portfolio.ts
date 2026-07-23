@@ -2,7 +2,8 @@ import { Router, Response } from "express";
 import { z } from "zod";
 import { requireAuth, AuthedRequest } from "../middleware/auth";
 import { query } from "../db";
-import { getEthBalance, isValidEthAddress } from "../services/etherscan";
+import { redis } from "../redis";
+import { getWalletHoldings, isValidEthAddress } from "../services/etherscan";
 import {
   getDefaultPortfolioId, getPortfolioView, parseHoldingsCsv, upsertHolding,
 } from "../services/holdings";
@@ -15,6 +16,22 @@ function fail(res: Response, err: unknown) {
   res.status(e.status ?? 500).json({ error: e.message ?? "Internal error" });
 }
 
+/** Clear a user's cached risk metrics so the Dashboard recomputes on next load. */
+async function bustRiskCache(userId: number) {
+  try { await redis.del(`risk:user:${userId}`); } catch { /* non-fatal */ }
+}
+
+/** Replace all holdings for a wallet source with a fresh on-chain read. */
+async function syncWalletSource(sourceId: number, address: string): Promise<number> {
+  const holdings = await getWalletHoldings(address);
+  // Remove holdings that are no longer present, then upsert current ones.
+  await query("DELETE FROM holdings WHERE source_id = $1", [sourceId]);
+  for (const h of holdings) {
+    await upsertHolding(sourceId, h.assetId, h.symbol, h.amount);
+  }
+  return holdings.length;
+}
+
 // GET /api/portfolio — sources + holdings valued in USD
 router.get("/", async (req: AuthedRequest, res) => {
   try {
@@ -22,7 +39,7 @@ router.get("/", async (req: AuthedRequest, res) => {
   } catch (err) { fail(res, err); }
 });
 
-// POST /api/portfolio/wallets { address } — add an ETH wallet source and sync its balance
+// POST /api/portfolio/wallets { address } — add a wallet source, sync ETH + ERC-20 tokens
 const walletBody = z.object({ address: z.string().trim() });
 router.post("/wallets", async (req: AuthedRequest, res) => {
   const parsed = walletBody.safeParse(req.body);
@@ -32,8 +49,7 @@ router.post("/wallets", async (req: AuthedRequest, res) => {
   const address = parsed.data.address.toLowerCase();
   try {
     const portfolioId = await getDefaultPortfolioId(req.userId!);
-    // Store the FULL address as the label — the UI shortens it for display,
-    // and /sync needs the full address to refresh balances.
+    // Full address stored as the label; UI shortens it, /sync uses it to refresh.
     const existing = await query<{ id: number }>(
       "SELECT id FROM sources WHERE portfolio_id = $1 AND kind = 'wallet' AND label = $2",
       [portfolioId, address]
@@ -45,10 +61,10 @@ router.post("/wallets", async (req: AuthedRequest, res) => {
           [portfolioId, address]
         ))[0].id;
 
-    const balance = await getEthBalance(address);
-    await upsertHolding(sourceId, "ethereum", "ETH", balance.eth);
+    const assetCount = await syncWalletSource(sourceId, address);
+    await bustRiskCache(req.userId!);
 
-    res.status(201).json({ sourceId, address, eth: balance.eth });
+    res.status(201).json({ sourceId, address, assets: assetCount });
   } catch (err) { fail(res, err); }
 });
 
@@ -75,11 +91,12 @@ router.post("/csv", async (req: AuthedRequest, res) => {
     for (const r of rows) {
       await upsertHolding(sourceId, r.assetId, r.symbol, r.amount);
     }
+    await bustRiskCache(req.userId!);
     res.status(201).json({ sourceId, imported: rows.length, skipped: errors });
   } catch (err) { fail(res, err); }
 });
 
-// POST /api/portfolio/sync — refresh all wallet balances from Etherscan
+// POST /api/portfolio/sync — refresh all wallet balances (ETH + tokens) from chain
 router.post("/sync", async (req: AuthedRequest, res) => {
   try {
     const portfolioId = await getDefaultPortfolioId(req.userId!);
@@ -87,15 +104,14 @@ router.post("/sync", async (req: AuthedRequest, res) => {
       "SELECT id, label FROM sources WHERE portfolio_id = $1 AND kind = 'wallet'",
       [portfolioId]
     );
-    // Wallet source labels hold the full address, so we can refresh directly.
     let refreshed = 0;
     for (const w of wallets) {
       if (isValidEthAddress(w.label)) {
-        const balance = await getEthBalance(w.label);
-        await upsertHolding(w.id, "ethereum", "ETH", balance.eth);
+        await syncWalletSource(w.id, w.label);
         refreshed++;
       }
     }
+    await bustRiskCache(req.userId!);
     res.json({ refreshed, total: wallets.length });
   } catch (err) { fail(res, err); }
 });
@@ -111,6 +127,7 @@ router.delete("/sources/:id", async (req: AuthedRequest, res) => {
       [id, portfolioId]
     );
     if (deleted.length === 0) return res.status(404).json({ error: "Source not found" });
+    await bustRiskCache(req.userId!);
     res.json({ deleted: id });
   } catch (err) { fail(res, err); }
 });
