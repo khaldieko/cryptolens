@@ -5,8 +5,8 @@ import { useAuth } from "../context/AuthContext";
 const NAV = [
   { to: "/", label: "Dashboard", enabled: true },
   { to: "/portfolio", label: "Portfolio", enabled: true },
-  { to: "/risk", label: "Risk Lab", enabled: false },
-  { to: "/alerts", label: "Alerts", enabled: false },
+  { to: "/risk", label: "Risk Lab", enabled: true },
+  { to: "/alerts", label: "Alerts", enabled: true },
 ];
 
 export default function Layout({ title, children }: { title: string; children: ReactNode }) {

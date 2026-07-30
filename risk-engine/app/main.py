@@ -1,9 +1,13 @@
 from fastapi import FastAPI
 
-from .models import MetricsRequest, MetricsResponse
-from .risk import hhi, hhi_rating, portfolio_volatility
+from .models import (
+    MetricsRequest, MetricsResponse, SimulateRequest, SimulateResponse,
+)
+from .risk import (
+    hhi, hhi_rating, portfolio_volatility, simulate_drawdown,
+)
 
-app = FastAPI(title="CryptoLens Risk Engine", version="0.1.0")
+app = FastAPI(title="CryptoLens Risk Engine", version="0.2.0")
 
 
 @app.get("/health")
@@ -24,3 +28,11 @@ def metrics(req: MetricsRequest) -> MetricsResponse:
         concentration_hhi=round(score, 4),
         concentration_rating=hhi_rating(score),
     )
+
+
+@app.post("/simulate", response_model=SimulateResponse)
+def simulate(req: SimulateRequest) -> SimulateResponse:
+    series = {s.asset_id: s.prices for s in req.series}
+    holdings = [{"asset_id": h.asset_id, "value_usd": h.value_usd} for h in req.holdings]
+    result = simulate_drawdown(holdings, series, req.market_drop_pct)
+    return SimulateResponse(**result)

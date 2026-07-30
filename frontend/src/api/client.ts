@@ -87,3 +87,78 @@ export interface RiskMetrics {
 }
 
 export const getRiskMetrics = () => api<RiskMetrics>("/risk/metrics");
+
+// ---- Week 5: drawdown simulation ----
+
+export interface SimAssetImpact {
+  assetId: string;
+  beta: number;
+  valueBefore: number;
+  valueAfter: number;
+  changePct: number;
+}
+
+export interface SimulationResult {
+  marketDropPct: number;
+  totalBefore: number;
+  totalAfter: number;
+  projectedLoss: number;
+  projectedLossPct: number;
+  perAsset: SimAssetImpact[];
+}
+
+export const runSimulation = (dropPct: number) =>
+  api<SimulationResult>(`/risk/simulate?drop=${dropPct}`);
+
+// ---- Week 5: alerts ----
+
+export type AlertMetric = "portfolio_volatility" | "asset_pct" | "portfolio_value";
+export type AlertCondition = "above" | "below";
+export type AlertChannel = "in_app" | "email";
+
+export interface Alert {
+  id: number;
+  metric: AlertMetric;
+  condition: AlertCondition;
+  threshold: number;
+  channel: AlertChannel;
+  enabled: boolean;
+  lastFiredAt: string | null;
+}
+
+export interface AlertEvent {
+  id: number;
+  alertId: number;
+  metric: AlertMetric;
+  valueAtTrigger: number;
+  message: string;
+  seen: boolean;
+  triggeredAt: string;
+}
+
+export interface AlertsView {
+  alerts: Alert[];
+  events: AlertEvent[];
+  unseen: number;
+}
+
+export const getAlerts = () => api<AlertsView>("/alerts");
+
+export const createAlert = (
+  metric: AlertMetric, condition: AlertCondition, threshold: number, channel: AlertChannel
+) => api<{ id: number }>("/alerts", {
+  method: "POST",
+  body: JSON.stringify({ metric, condition, threshold, channel }),
+});
+
+export const toggleAlert = (id: number, enabled: boolean) =>
+  api<{ id: number; enabled: boolean }>(`/alerts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+
+export const deleteAlert = (id: number) =>
+  api<{ deleted: number }>(`/alerts/${id}`, { method: "DELETE" });
+
+export const markAlertsSeen = () =>
+  api<{ ok: boolean }>("/alerts/seen", { method: "POST" });
