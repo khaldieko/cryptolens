@@ -1,24 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getPrices, getRiskMetrics, PriceMap, RiskMetrics } from "../api/client";
+import {
+  getPortfolio, getRiskMetrics, getTrend,
+  PortfolioView, RiskMetrics, TrendResult,
+} from "../api/client";
 import Layout from "../components/Layout";
-
-const TRACKED = ["bitcoin", "ethereum", "solana"];
+import { AllocationDonut, ValueAreaChart, VolatilityTrendChart, AllocationSlice } from "../components/Charts";
 
 const fmtUsd = (n: number) =>
   n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
-/** Compact display for big portfolios: $1.23K / $4.56M / $170.7B — keeps stat cards from overflowing. */
-const fmtUsdCompact = (n: number) => {
-  const abs = Math.abs(n);
-  if (abs >= 1000) {
-    return n.toLocaleString(undefined, {
-      style: "currency", currency: "USD",
-      notation: "compact", maximumFractionDigits: 2,
-    });
-  }
-  return fmtUsd(n);
-};
+const fmtUsdCompact = (n: number) =>
+  Math.abs(n) >= 1000
+    ? n.toLocaleString(undefined, { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 2 })
+    : fmtUsd(n);
 
 function ratingColor(r: RiskMetrics["concentrationRating"]) {
   return r === "Low" ? "text-emerald-600" : r === "Moderate" ? "text-amber-600" : "text-red-600";
@@ -42,20 +37,30 @@ function StatCard({
   );
 }
 
+function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl bg-white border border-slate-200 p-5">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+        {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const [prices, setPrices] = useState<PriceMap | null>(null);
   const [risk, setRisk] = useState<RiskMetrics | null>(null);
+  const [portfolio, setPortfolio] = useState<PortfolioView | null>(null);
+  const [trend, setTrend] = useState<TrendResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     const load = () => {
-      getPrices(TRACKED)
-        .then(r => active && setPrices(r.prices))
-        .catch(e => active && setError((e as Error).message));
-      getRiskMetrics()
-        .then(m => active && setRisk(m))
-        .catch(e => active && setError((e as Error).message));
+      getRiskMetrics().then(m => active && setRisk(m)).catch(e => active && setError((e as Error).message));
+      getPortfolio().then(p => active && setPortfolio(p)).catch(() => {});
+      getTrend(30, 7).then(t => active && setTrend(t)).catch(() => {});
     };
     load();
     const id = setInterval(load, 60_000);
@@ -63,12 +68,27 @@ export default function Dashboard() {
   }, []);
 
   const vol = risk ? volatilityLabel(risk.volatilityAnnualized) : null;
+  const hasHoldings = !!risk && risk.totalValueUsd > 0;
+
+  // Aggregate holdings by asset for the donut (a portfolio can hold one asset
+  // across several sources — the chart should show one slice per asset).
+  const allocation: AllocationSlice[] = (() => {
+    if (!portfolio || portfolio.totalValueUsd <= 0) return [];
+    const byAsset = new Map<string, { symbol: string; valueUsd: number }>();
+    for (const h of portfolio.holdings) {
+      const prev = byAsset.get(h.assetId);
+      byAsset.set(h.assetId, { symbol: h.symbol, valueUsd: (prev?.valueUsd ?? 0) + h.valueUsd });
+    }
+    return [...byAsset.values()]
+      .map(a => ({ ...a, pct: (a.valueUsd / portfolio.totalValueUsd) * 100 }))
+      .sort((a, b) => b.valueUsd - a.valueUsd);
+  })();
 
   return (
     <Layout title="Dashboard">
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
-      {/* Week 4: the four risk stat cards from the Week 1 wireframe */}
+      {/* Stat cards */}
       <div className="flex flex-wrap gap-4 mb-2">
         <StatCard
           label="Total Value (USD)"
@@ -86,68 +106,62 @@ export default function Dashboard() {
         </StatCard>
         <StatCard
           label="Volatility Score"
-          sub={risk && risk.assetsIncluded > 0 ? `annualized, ${risk.assetsIncluded} assets, 30d history` : undefined}
+          sub={risk && risk.assetsIncluded > 0 ? `annualized · ${risk.assetsIncluded} assets · 30d` : undefined}
         >
-          {risk ? (
-            risk.assetsIncluded > 0 ? (
-              <span className={vol!.cls}>{(risk.volatilityAnnualized * 100).toFixed(1)}% · {vol!.label}</span>
-            ) : "—"
-          ) : "—"}
+          {risk && risk.assetsIncluded > 0
+            ? <span className={vol!.cls}>{(risk.volatilityAnnualized * 100).toFixed(1)}% · {vol!.label}</span>
+            : "—"}
         </StatCard>
         <StatCard
           label="Concentration Rating"
           sub={risk && risk.totalValueUsd > 0 ? `HHI ${risk.concentrationHhi.toFixed(2)}` : undefined}
         >
-          {risk && risk.totalValueUsd > 0 ? (
-            <span className={ratingColor(risk.concentrationRating)}>{risk.concentrationRating}</span>
-          ) : "—"}
+          {risk && risk.totalValueUsd > 0
+            ? <span className={ratingColor(risk.concentrationRating)}>{risk.concentrationRating}</span>
+            : "—"}
         </StatCard>
       </div>
 
-      {risk && risk.totalValueUsd === 0 && (
+      {!hasHoldings && risk && (
         <p className="text-sm text-slate-400 mb-6">
           Add holdings on the <Link to="/portfolio" className="text-teal-600">Portfolio page</Link> to
-          unlock risk metrics.
-        </p>
-      )}
-      {risk && risk.totalValueUsd > 0 && (
-        <p className="text-xs text-slate-400 mb-6">
-          Metrics computed by the Python risk engine from your holdings + 30-day price history ·{" "}
-          <Link to="/portfolio" className="text-teal-600">Manage portfolio →</Link>
+          unlock risk metrics and charts.
         </p>
       )}
 
-      <h2 className="text-sm font-semibold text-slate-600 mb-1">Live Prices</h2>
-      <p className="text-xs text-slate-400 mb-4">Live CoinGecko data via the API's Redis cache (60s TTL).</p>
+      {hasHoldings && (
+        <>
+          <p className="text-xs text-slate-400 mb-5">
+            Metrics computed by the Python risk engine from your holdings + 30-day price history ·{" "}
+            <Link to="/portfolio" className="text-teal-600">Manage portfolio →</Link>
+          </p>
 
-      {!prices && !error && <p className="text-sm text-slate-400">Loading prices…</p>}
+          {/* Charts */}
+          <div className="grid gap-5 lg:grid-cols-2 mb-5">
+            <Panel title="Allocation by Asset" subtitle="Share of total portfolio value">
+              <AllocationDonut data={allocation} />
+            </Panel>
 
-      {prices && (
-        <table className="w-full max-w-xl text-sm border-t border-slate-200">
-          <thead>
-            <tr className="text-left text-slate-500">
-              <th className="py-2">Asset</th>
-              <th className="py-2">Price (USD)</th>
-              <th className="py-2">24h</th>
-            </tr>
-          </thead>
-          <tbody>
-            {TRACKED.map(id => {
-              const p = prices[id];
-              if (!p) return null;
-              const change = p.usd_24h_change ?? 0;
-              return (
-                <tr key={id} className="border-t border-slate-100">
-                  <td className="py-2 font-medium capitalize">{id}</td>
-                  <td className="py-2">${p.usd.toLocaleString()}</td>
-                  <td className={`py-2 ${change >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {change.toFixed(2)}%
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            <Panel
+              title="Portfolio Value Over Time"
+              subtitle={trend?.note ?? "Last 30 days"}
+            >
+              <ValueAreaChart data={trend?.points ?? []} />
+            </Panel>
+          </div>
+
+          <Panel
+            title="Volatility Trend"
+            subtitle={`Rolling ${trend?.window ?? 7}-day annualized volatility of your portfolio value`}
+          >
+            <VolatilityTrendChart data={trend?.points ?? []} />
+          </Panel>
+
+          <div className="mt-5 flex flex-wrap gap-3 text-sm">
+            <Link to="/risk" className="text-teal-600 font-medium">Run a drawdown simulation →</Link>
+            <Link to="/alerts" className="text-teal-600 font-medium">Set up alerts →</Link>
+          </div>
+        </>
       )}
     </Layout>
   );
