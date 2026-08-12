@@ -2,18 +2,18 @@ from pydantic import BaseModel, Field
 
 
 class PriceSeries(BaseModel):
-    asset_id: str
-    prices: list[float] = Field(min_length=2)
+    asset_id: str = Field(min_length=1, max_length=64)
+    prices: list[float] = Field(min_length=2, max_length=400)
 
 
 class Holding(BaseModel):
-    asset_id: str
+    asset_id: str = Field(min_length=1, max_length=64)
     value_usd: float = Field(ge=0)
 
 
 class MetricsRequest(BaseModel):
-    holdings: list[Holding]
-    series: list[PriceSeries]
+    holdings: list[Holding] = Field(max_length=200)
+    series: list[PriceSeries] = Field(max_length=200)
 
 
 class MetricsResponse(BaseModel):
@@ -23,8 +23,8 @@ class MetricsResponse(BaseModel):
 
 
 class SimulateRequest(BaseModel):
-    holdings: list[Holding]
-    series: list[PriceSeries]
+    holdings: list[Holding] = Field(max_length=200)
+    series: list[PriceSeries] = Field(max_length=200)
     market_drop_pct: float = Field(le=0, ge=-100)
 
 
@@ -46,12 +46,12 @@ class SimulateResponse(BaseModel):
 
 
 class ValuePoint(BaseModel):
-    day: str
+    day: str = Field(min_length=1, max_length=32)
     value: float
 
 
 class TrendRequest(BaseModel):
-    series: list[ValuePoint]
+    series: list[ValuePoint] = Field(max_length=400)
     window: int = Field(default=7, ge=3, le=30)
 
 

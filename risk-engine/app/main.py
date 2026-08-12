@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from .models import (
     MetricsRequest, MetricsResponse, SimulateRequest, SimulateResponse,
@@ -6,7 +9,15 @@ from .models import (
 )
 from .risk import hhi, hhi_rating, portfolio_volatility, simulate_drawdown, volatility_trend
 
-app = FastAPI(title="CryptoLens Risk Engine", version="0.3.0")
+log = logging.getLogger("cryptolens.engine")
+app = FastAPI(title="CryptoLens Risk Engine", version="1.0.0")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_request: Request, exc: Exception):
+    """Week 7: never leak stack traces to callers; log server-side instead."""
+    log.exception("Unhandled error in risk engine: %s", exc)
+    return JSONResponse(status_code=500, content={"error": "Internal computation error"})
 
 
 @app.get("/health")
